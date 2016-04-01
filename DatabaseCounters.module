@@ -1,0 +1,178 @@
+<?php
+
+/**
+ * ProcessWire Database Counters Module
+ * Provides a module interface for accessing a set of named counters and getting their next values.
+ *
+ *
+ * ProcessWire is Copyright Ryan Cramer
+ *
+ *
+ * This Module Copyright (c) 2014-2016 Stephen Dickinson
+ *
+ * The above copyright notice and the following permissions and disclaimer shall be included in all copies or
+ * substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+ * WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+ * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
+class DatabaseCounters extends WireData implements Module, ConfigurableModule
+{
+
+    const DB_TABLE_NAME = 'named_counters';
+
+
+    public static function getModuleInfo()
+    {
+        return array(
+            'title'     => 'Database Counters',
+            'version'   => 100,
+            'summary'   => __('Uses an InnoDB table to implement a set of named counters.', __FILE__),
+            'permanent' => false,
+            'singular'  => true,
+            'autoload'  => false,
+            'author'    => 'Netcarver',
+        );
+    }
+
+
+    public function __construct()
+    {
+    }
+
+
+    public function init()
+    {
+    }
+
+
+    /**
+     * Call this method to get the next value for a named counter.
+     *
+     * Uses the $change and, optionally, the $min parameter to calculate the next value for the given $counter.
+     * The named counter will be created if not already present.
+     * If a minimum value is defined, the next value will be at least this.
+     * The named counter will be incremented by the $change and the value returned.
+     *
+     * @param string $counter  The name of the counter to change. Must be non-empty string.
+     * @param int $change (optional) The amount to change the counter by. Must be non-zero integer. Defaults to 1.
+     * @param null|int $min (optional) If specified, the returned value will be greater or equal to this value.
+     * @return int The next value of the named counter.
+     * @throws \Exception
+     */
+    public function next($counter, $change = 1, $min = null)
+    {
+        $next_id = false;
+
+        // Ensure the amount to change the counter by is sane.
+        if (!is_int($change) || 0 == $change) {
+            throw new Exception('$change must be a non-zero integer.');
+        }
+
+        if (null !== $min && (!is_int($min) || 0 == $min)) {
+            throw new Exception('$min must either be null or a non-zero integer.');
+        }
+
+        if (!is_string($counter) || $counter === '') {
+            throw new Exception('$counter must be a non-empty string');
+        }
+
+        $counter = $this->db->escapeStr($counter);
+        if ($counter === '') {
+            throw new Exception('$counter must be a non-empty string');
+        }
+
+        $table = $this->db->escapeStr(self::DB_TABLE_NAME);
+        $sql   = "INSERT INTO $table (`name`, `value`) VALUES('$counter', LAST_INSERT_ID($change)) ON DUPLICATE KEY UPDATE `value`=LAST_INSERT_ID(`value`+$change);";
+        $this->db->query($sql);
+        $sql   = "SELECT LAST_INSERT_ID();";
+        $result = $this->db->query($sql);
+        while($row = $result->fetch_array()) {
+            $next_id = (int) $row[0];
+        }
+
+        // Check we are at the minimum value. Not happy with this implementation. It may change.
+        if ($min !== null && ($next_id < $min)) {
+            $diff = $min - $next_id;
+            $next_id = $this->next($counter, $diff, $min);
+        }
+
+        return $next_id;
+    }
+
+
+    /**
+     * Call this to setup a new counter.
+     *
+     * Does not over-write existing counter values: if you need to change a value, you'll have to do that by hand using
+     * a DB edit tool like PhpMyAdmin.
+     */
+    public function initialise($counter, $value = 0)
+    {
+        $table  = $this->db->escapeStr(self::DB_TABLE_NAME);
+        $sql    = "INSERT INTO $table (`name`, `value`) SET ('$counter', '$value')";
+        $result = $this->db->query($sql);
+    }
+
+
+    static protected $defaultSettings = array();
+
+
+    static public function getModuleConfigInputfields(array $data)
+    {
+        $fields   = new InputfieldWrapper();
+        $data     = array_merge(self::$defaultSettings, $data);
+        $m        = wire('modules');
+        $db       = wire('db');
+        $table    = $db->escapeStr(self::DB_TABLE_NAME);
+        $counters = $db->query("SELECT `name`, `value` FROM $table ORDER BY `name` ASC LIMIT 250");
+
+        $f = $m->get("InputfieldMarkup");
+        $f->label = __("Database Counters", __FILE__);
+        $t = '<table class="AdminDataTable AdminDataList"><thead><tr><th>' . __('Counter', __FILE__) . '</th><th>' . __('Value', __FILE__) . "</th></tr></thead>\n";
+        $c = '';
+        while($row = $counters->fetch_array()) {
+            $name  = $row[0];
+            $value = $row[1];
+            $c .= "<tr><td>$name</td><td>$value</td></tr>\n";
+        }
+
+        if (strlen($c) > 0) {
+            $t .= $c;
+        } else {
+            $t .= '<tbody><tr><td colspan=2>' . __('No Counters Defined', __FILE__) . "</td></tr></tbody>\n";
+        }
+
+        $t .= "</table>\n";
+        $f->value = $t;
+        $fields->add($f);
+
+        return $fields;
+    }
+
+
+    /**
+     * Create the counters table (if not currently present)
+     */
+    public function ___install()
+    {
+        $table = $this->db->escapeStr(self::DB_TABLE_NAME);
+        $sql   = <<< _SQL
+            CREATE TABLE IF NOT EXISTS $table (
+                `name` tinytext NOT NULL,
+                `value` bigint(20) UNSIGNED NOT NULL DEFAULT '0',
+                PRIMARY KEY (`name`(32))
+            ) ENGINE = INNODB CHARSET = ascii;
+_SQL;
+        $this->db->query($sql);
+        $this->db->query("INSERT INTO $table SET `name` = 'test'");
+    }
+
+
+    /**
+     * There is no uninstall routine. The counters table is left in place in case of re-install.
+     */
+}
