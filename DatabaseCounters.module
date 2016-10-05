@@ -118,6 +118,23 @@ class DatabaseCounters extends WireData implements Module, ConfigurableModule
     }
 
 
+    public function remove($counter)
+    {
+        if (!is_string($counter) || $counter === '') {
+            throw new Exception('$counter must be a non-empty string');
+        }
+        $counter = $this->db->escapeStr($counter);
+        if ($counter === '') {
+            throw new Exception('$counter must be a non-empty string');
+        }
+
+        $table  = $this->db->escapeStr(self::DB_TABLE_NAME);
+
+        $sql    = "DELETE FROM $table WHERE `name` = '$counter'";
+        $result = $this->db->query($sql);
+    }
+
+
     static protected $defaultSettings = array();
 
 
