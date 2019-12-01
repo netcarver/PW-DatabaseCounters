@@ -29,7 +29,7 @@ class DatabaseCounters extends WireData implements Module, ConfigurableModule
     {
         return array(
             'title'     => 'Database Counters',
-            'version'   => '1.1.1',
+            'version'   => '1.1.2',
             'summary'   => __('Uses an InnoDB table to implement a set of named counters.', __FILE__),
             'permanent' => false,
             'singular'  => true,
@@ -164,7 +164,7 @@ class DatabaseCounters extends WireData implements Module, ConfigurableModule
         $m        = wire('modules');
         $db       = wire('database');
         $table    = $db->escapeStr(self::DB_TABLE_NAME);
-        $path     = wire('config')->urls->admin . 'module/';
+        $mpath    = wire('config')->urls->admin . 'module/';
 
         $cmd = wire('input')->get('cmd');
         if ('inc' === $cmd) {
@@ -183,8 +183,8 @@ class DatabaseCounters extends WireData implements Module, ConfigurableModule
             $name  = htmlspecialchars($row['name'], ENT_QUOTES, 'UTF-8');
             $value = (int) $row['value'];
             if ($show_controls) {
-                $show_dec = ($value > 0) ? " &mdash; <a href='{$path}edit/?name=DatabaseCounters&cmd=dec'>Dec</a>" : "";
-                $c .= "<tr><td>$name $show_dec &mdash; <a href='{$path}edit/?name=DatabaseCounters&cmd=inc'>Inc</a></td><td>$value</td></tr>\n";
+                $show_dec = ($value > 0) ? " &mdash; <a href='{$mpath}edit/?name=DatabaseCounters&cmd=dec'>Dec</a>" : "";
+                $c .= "<tr><td>$name $show_dec &mdash; <a href='{$mpath}edit/?name=DatabaseCounters&cmd=inc'>Inc</a></td><td>$value</td></tr>\n";
             } else {
                 $c .= "<tr><td>$name</td><td>$value</td></tr>\n";
             }
